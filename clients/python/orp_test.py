@@ -47,12 +47,26 @@ import os
 from time import sleep
 import argparse
 
-from modules.simple_hdlc import HDLC
-from modules.simple_hdlc import __version__ as hdlc_version
 import serial
-import modules.orp_protocol
-from modules.orp_protocol import decode_response
-from modules.orp_protocol import encode_request
+
+# Import local versions of orp_protocol and simple_hdlc
+if sys.version_info[0] == 2:
+    # Python 2 - hack
+    mypath = os.path.dirname(os.path.abspath(__file__))
+    sys.path.append(mypath + '/modules')
+    from simple_hdlc import HDLC
+    from simple_hdlc import __version__ as hdlc_version
+    import orp_protocol
+    from orp_protocol import decode_response
+    from orp_protocol import encode_request
+else:
+    # Python 3
+    from modules.simple_hdlc import HDLC
+    from modules.simple_hdlc import __version__ as hdlc_version
+    import modules.orp_protocol
+    from modules.orp_protocol import decode_response
+    from modules.orp_protocol import encode_request
+
 
 #
 # Function to automatically reply to sync
