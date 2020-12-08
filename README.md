@@ -58,7 +58,7 @@ Depends on:
 - clients/c/inc/*
 
 Tested on:
-- Ubuntu 20.04: Python 2.7, 3.8
+- Ubuntu 20.04
 
 Build:
 1. Install gcc
@@ -71,8 +71,7 @@ Usage:
 
 Where:
 
-    DEV           : serial port name or path (e.g. COM3 on Windows or /dev/ttyUSB0 on Linux)
+    DEV           : serial port name or path (e.g. /dev/ttyUSB0)
     BAUD          : baud rate (default 9600)
-    --no-auto-ack : option to disable automatic acknowledgement of sync and notification packets
 
 For a list of supported commands, type "h" at the prompt
