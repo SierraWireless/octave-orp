@@ -364,7 +364,7 @@ static void commandExample(char *args)
 }
 
 /* Respond to a notification or unsolicited packet
- * > reply resource| <status>
+ * > reply resource|sensor|syn|synack <status>
  */
 static void commandRespond(char *args)
 {
