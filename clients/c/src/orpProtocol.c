@@ -457,9 +457,8 @@ static size_t orp_TimeEncode
 )
 //--------------------------------------------------------------------------------------------------
 {
-/* FIXME - imorrison 2020:12:02
- * There is an error in the ORP service which causes it to reject timestamps containing a
- * decimal point (BROOKLYN-3433).  This will be corrected in release 3.2.0.
+/* NOTE: There is an error in the ORP service which causes it to reject timestamps containing a
+ * decimal point.  This will be corrected in Octave firmware release 3.2.0.
  */
 #if 1
 #define TIME_FMT "%lu"
