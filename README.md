@@ -31,7 +31,7 @@ Setup:
 
    Windows:
    `> pip3 install six pythoncrc pyserial`
-   
+
    Linux:
    `$ sudo -H pip3 install six pythoncrc pyserial`
 
@@ -44,5 +44,34 @@ Where:
     DEV           : serial port name or path (e.g. COM3 on Windows or /dev/ttyUSB0 on Linux)
     BAUD          : baud rate (default 9600)
     --no-auto-ack : option to disable automatic acknowledgement of sync and notification packets
+
+For a list of supported commands, type "h" at the prompt
+
+### C
+
+#### orp
+
+A simple binary command-line utilty which can be used to mimic an ORP client, for testing and demonstration.
+
+Depends on:
+- clients/c/src/*
+- clients/c/inc/*
+
+Tested on:
+- Ubuntu 20.04
+
+Build:
+1. Install gcc (tested with ver 7, 9)
+2. cd clients/c
+3. make
+
+Usage:
+
+    ./bin/orp -d DEV -b BAUD
+
+Where:
+
+    DEV           : serial port name or path (e.g. /dev/ttyUSB0)
+    BAUD          : baud rate (default 9600)
 
 For a list of supported commands, type "h" at the prompt
