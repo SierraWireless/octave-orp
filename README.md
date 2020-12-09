@@ -61,7 +61,7 @@ Tested on:
 - Ubuntu 20.04
 
 Build:
-1. Install gcc
+1. Install gcc (tested with ver 7, 9)
 2. cd clients/c
 3. make
 
