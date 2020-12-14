@@ -63,7 +63,7 @@ else:
     # Python 3
     from modules.simple_hdlc import HDLC
     from modules.simple_hdlc import __version__ as hdlc_version
-    import modules.orp_protocol
+    import modules.orp_protocol as orp_protocol
     from modules.orp_protocol import decode_response
     from modules.orp_protocol import encode_request
 
