@@ -617,7 +617,7 @@ static bool orp_StatusEncode
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Encode the status enum into an ascii packet
+ * Decode the status byte from a packet
  */
 //--------------------------------------------------------------------------------------------------
 static bool orp_StatusDecode
@@ -651,6 +651,36 @@ static bool orp_VersionEncode
     else if (10 <= version && version <= 15)
     {
         buf[ORP_OFFSET_VERSION] = 'A' + (version - 10);
+    }
+    else
+    {
+        return false;
+    }
+    return true;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+/**
+ * Decode the protocol version from an ascii packet
+ */
+//--------------------------------------------------------------------------------------------------
+static bool orp_VersionDecode
+(
+    uint8_t *buf,
+    short int *version
+)
+//--------------------------------------------------------------------------------------------------
+{
+    char c = toupper(buf[ORP_OFFSET_VERSION]);
+    
+    if ('0' <= c || c <= '9')
+    {
+        *version = c - '0';
+    }
+    else if ('A' <= c || c <= 'F')
+    {
+        *version = c - 'A' + 10;
     }
     else
     {
@@ -733,8 +763,7 @@ static bool orp_PacketByte1Decode
         || (ORP_SYNC_SYNACK == msg->type)
         || (ORP_SYNC_ACK    == msg->type))
     {
-        LE_ERROR("SYN|SYNACK|ACK byte 1 not decoded");
-//            break;
+        status = orp_VersionDecode(buf, &msg->version);
     }
     // Response
     else if (ORP_RESPONSE_MASK & msg->type)

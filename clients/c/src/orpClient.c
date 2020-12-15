@@ -294,6 +294,32 @@ err:
 
 //--------------------------------------------------------------------------------------------------
 /**
+ * Respond to a sync packet
+ */
+//--------------------------------------------------------------------------------------------------
+le_result_t orp_Respond
+(
+    enum orp_PacketType type,
+    int status
+)
+{
+    struct orp_Message message;
+
+    switch (type)
+    {
+        case ORP_RESP_HANDLER_CALL: break;
+        case ORP_RESP_SENSOR_CALL: break;
+        case ORP_SYNC_SYNACK: break;
+        case ORP_SYNC_ACK: break;
+        default: return LE_BAD_PARAMETER;
+    }
+    orp_MessageInit(&message, type, status);
+    return orp_ClientMessageSend(&message);
+}
+
+
+//--------------------------------------------------------------------------------------------------
+/**
  * Handle an incomimg message
  */
 //--------------------------------------------------------------------------------------------------
@@ -302,7 +328,44 @@ static void orp_Dispatch
     struct orp_Message *message
 )
 {
-    // nothing implemented yet
+    switch(message->type)
+    {
+        case ORP_PACKET_TYPE_UNKNOWN:
+        case ORP_RQST_INPUT_CREATE:
+        case ORP_RESP_INPUT_CREATE:
+        case ORP_RQST_OUTPUT_CREATE:
+        case ORP_RESP_OUTPUT_CREATE:
+        case ORP_RQST_DELETE:
+        case ORP_RESP_DELETE:
+        case ORP_RQST_HANDLER_ADD:
+        case ORP_RESP_HANDLER_ADD:
+        case ORP_RQST_HANDLER_REM:
+        case ORP_RESP_HANDLER_REM:
+        case ORP_RQST_PUSH:
+        case ORP_RESP_PUSH:
+        case ORP_RQST_GET:
+        case ORP_RESP_GET:
+        case ORP_RQST_EXAMPLE_SET:
+        case ORP_RESP_EXAMPLE_SET:
+        case ORP_RQST_SENSOR_CREATE:
+        case ORP_RESP_SENSOR_CREATE:
+        case ORP_RQST_SENSOR_REMOVE:
+        case ORP_RESP_SENSOR_REMOVE:
+        case ORP_NTFY_HANDLER_CALL:
+        case ORP_RESP_HANDLER_CALL:
+        case ORP_NTFY_SENSOR_CALL:
+        case ORP_RESP_SENSOR_CALL:
+            break;
+
+        case ORP_SYNC_SYN:
+            (void)orp_Respond(ORP_SYNC_SYNACK, );
+            break;
+
+        case ORP_SYNC_SYNACK:
+        case ORP_SYNC_ACK:
+        case ORP_RESP_UNKNOWN_RQST:
+        default:
+    }
 }
 
 
