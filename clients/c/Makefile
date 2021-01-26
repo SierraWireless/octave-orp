@@ -35,7 +35,7 @@ CLI_TOOL := orp
 
 CFLAGS = -I$(INC_DIR)
 
-SRCS := main.c commands.c orpProtocol.c hdlc.c orpClient.c orpUtils.c
+SRCS := main.c commands.c orpProtocol.c hdlc.c orpClient.c orpUtils.c orpFile.c
 OBJS := $(addprefix $(BUILD_DIR)/,$(patsubst %.c,%.o,$(SRCS)))
 
 

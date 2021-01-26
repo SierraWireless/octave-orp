@@ -36,8 +36,11 @@
 #include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "orpClient.h"
-
+#include "fileTransfer.h"
+#include "orpFile.h"
 
 //--------------------------------------------------------------------------------------------------
 /**
@@ -51,10 +54,14 @@ const char helpStr[] =
 \tcreate input|output|sensor  trig|bool|num|str|json <path> [<units>]\n\
 \tdelete resource|handler|sensor <path>\n\
 \tadd handler <path>\n\
-\tpush trig|bool|num|str|json <path> <timestamp> [<data>] (note: if <timestamp> = 0, current timestamp will be used)\n\
+\tpush trig|bool|num|str|json <path> <timestamp> [<data>] (note: if <timestamp> = 0, current timestamp is used)\n\
 \tget <path>\n\
 \texample json <path> [<data>]\n\
-\treply handler|sensor|sync <status>\n\
+\treply handler|sensor|control|data <status>\n\
+\tsync syn|synack|ack [-v] [-s] [-r] [-m]\n\
+\tfile control info|ready|pending|suspend|resume|abort [<private data>]\n\
+\tfile control start <remote file> [-a <remote file size>] [-f <local file>]\n\
+\tfile data [<data>]\n\
 ";
 
 
@@ -72,7 +79,9 @@ enum commandTypeE {
     ORPCLI_CMD_PUSH,
     ORPCLI_CMD_GET,
     ORPCLI_CMD_EXAMPLE,
+    ORPCLI_CMD_FILE,
     ORPCLI_CMD_REPLY,
+    ORPCLI_CMD_SYNC,
     ORPCLI_CMD_UNKNOWN
 };
 
@@ -100,8 +109,12 @@ static enum commandTypeE commandExtract(char **line)
         return ORPCLI_CMD_GET;
     if (!strncasecmp(cmdStr, "example", cmdLen))
         return ORPCLI_CMD_EXAMPLE;
+    if (!strncasecmp(cmdStr, "file", cmdLen))
+        return ORPCLI_CMD_FILE;
     if (!strncasecmp(cmdStr, "reply", cmdLen))
         return ORPCLI_CMD_REPLY;
+    if (!strncasecmp(cmdStr, "sync", cmdLen))
+        return ORPCLI_CMD_SYNC;
     if (!strncasecmp(cmdStr, "help", cmdLen))
         return ORPCLI_CMD_HELP;
     if (!strncasecmp(cmdStr, "quit", cmdLen))
@@ -364,7 +377,7 @@ static void commandExample(char *args)
 }
 
 /* Respond to a notification or unsolicited packet
- * > reply resource|sensor|syn|synack <status>
+ * > reply handler|sensor|control|data <status>
  */
 static void commandRespond(char *args)
 {
@@ -393,13 +406,13 @@ static void commandRespond(char *args)
     {
         responseType = ORP_RESP_SENSOR_CALL;
     }
-    else if (!strncasecmp(argv[0], "syn", strlen(argv[0])))
+    else if (!strncasecmp(argv[0], "data", strlen(argv[0])))
     {
-        responseType = ORP_SYNC_ACK;
+        responseType = ORP_RESP_FILE_DATA;
     }
-    else if (!strncasecmp(argv[0], "synack", strlen(argv[0])))
+    else if (!strncasecmp(argv[0], "control", strlen(argv[0])))
     {
-        responseType = ORP_SYNC_SYNACK;
+        responseType = ORP_RESP_FILE_CONTROL;
     }
     else
     {
@@ -407,6 +420,214 @@ static void commandRespond(char *args)
         return;
     }
     (void)orp_Respond(responseType, status);
+}
+
+/* Send file control or data packet
+ * Control:
+ * > file control info|ready|pending|suspend|resume|abort [<private data>]
+ * > file control start <remote file> [-a <remote file size>] [-f <local file>]
+ *
+ * Data:
+ * > file data <data>
+ */
+static void commandFileTransfer(char *args)
+{
+    char *argv[8];
+    int argc;
+    char *argsEnd = args + strlen(args);
+    char *data = NULL;
+
+    /* !!! Only parse the first 2 args.  The 3rd is data, which may contain
+     * spaces.  We deal with the data arg separately, below
+     */
+    argc = string2Args(args, argv, 2);
+    if (!checkArgCount(argc, 2, 2))
+    {
+        return;
+    }
+    // Point to the data string, if present
+    argv[argc] = argv[argc - 1] + strlen(argv[argc - 1]) + 1;
+    if (argv[argc] < argsEnd)
+    {
+        data = argv[argc];
+    }
+
+    // Control (notification) packets require an event value for byte[1]
+    if ('c' == tolower(argv[0][0]))
+    {
+        // info | ready | pending | start | suspend | resume | abort
+        unsigned int event;
+        const char *eventStr = argv[1];
+        if (!strncasecmp(eventStr, "info", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_INFO;
+        }
+        else if (!strncasecmp(eventStr, "ready", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_READY;
+        }
+        else if (!strncasecmp(eventStr, "pending", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_PENDING;
+        }
+        else if (!strncasecmp(eventStr, "start", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_START;
+        }
+        else if (!strncasecmp(eventStr, "suspend", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_SUSPEND;
+        }
+        else if (!strncasecmp(eventStr, "resume", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_RESUME;
+        }
+        else if (!strncasecmp(eventStr, "abort", strlen(eventStr)))
+        {
+            event = FILETRANSFER_EVENT_ABORT;
+        }
+        else
+        {
+            printf("Unknown file control event %s\n", eventStr);
+            return;
+        }
+
+        if (FILETRANSFER_EVENT_START == event)
+        {
+            // This is a start request, so the format is known.  Extract the remaining args.
+            // Start of the remaining string
+            args = argv[argc - 1] + strlen(argv[argc - 1]) + 1;
+            argc += string2Args(args, argv + argc, 6);
+            if (!checkArgCount(argc, 2, 8))
+            {
+                return;
+            }
+
+            // Handle optional arguments for start command
+            char filename[FILE_NAME_MAX_LEN] = { '\0' };
+            int fileSize = -1;  // -1 Not specified - default
+            bool autoAck = false;
+            optind = 1;
+            opterr = 0;
+            int c;
+            while ((c = getopt(argc, argv, "f:a:")) != -1)
+            {
+                switch (c)
+                {
+                    case 'f': 
+                        snprintf(filename, sizeof(filename), "%s", optarg); 
+                        break;
+
+                    case 'a':
+                        fileSize = (int)strtoul(optarg, NULL, 0);
+                        autoAck = true;
+                        break;
+
+                    case '?':
+                        if (strchr("a", optopt) || strchr("f", optopt))
+                        {
+                            printf("Option %c requires a value\n", optopt);
+                        }
+                        else
+                        {
+                            printf("Unhandled option %c\n", isalnum(optopt) ? optopt : ' ');
+                        }
+                        return;
+
+                    default: 
+                        break;
+                }
+            }
+            // if no filename supplied, use name from remote source
+            if (!strlen(filename))
+            {
+                snprintf(filename, FILE_NAME_MAX_LEN, "%s", data);
+            }
+            orp_FileDataSetup(filename, fileSize, autoAck);
+        }
+        (void)orp_FileTransferNotify(event, data);
+    }
+    else if ('d' == tolower(argv[0][0]))
+    {
+        (void)orp_FileTransferData(0, data);
+    }
+    else
+    {
+        printf("Unrecognized type: %s\n", argv[0]);
+    }
+}
+
+/* Send one of the SYNC type packets
+ * > sync syn|synack [-v <version>] [-s <sent count>] [-r <received count>] [-m <mtu>]
+ * > sync ack
+ */
+static void commandSync(char *args)
+{
+    char *argv[8];
+    int argc = 0;
+
+    int version   =  0;
+    int sentCount = -1;  // -1 will not be encoded
+    int recvCount = -1;
+    int mtu       = -1;
+
+    argc = string2Args(args, argv, 8);
+    if (!checkArgCount(argc, 1, 8))
+    {
+        return;
+    }
+
+    // syn | synack | ack
+    enum orp_PacketType syncType;
+    if (!strncasecmp(argv[0], "syn", strlen(argv[0])))
+    {
+        syncType = ORP_SYNC_SYN;
+    }
+    else if (!strncasecmp(argv[0], "synack", strlen(argv[0])))
+    {
+        syncType = ORP_SYNC_SYNACK;
+    }
+    else if (!strncasecmp(argv[0], "ack", strlen(argv[0])))
+    {
+        syncType = ORP_SYNC_ACK;
+    }
+    else
+    {
+        printf("Unknown sync type %s\n", argv[0]);
+        return;
+    }
+
+    optind = 1;
+    opterr = 0;
+    int c;
+    while ((c = getopt(argc, argv, "v:s:r:m:")) != -1)
+    {
+        switch (c)
+        {
+            case 'v': version = (int)strtoul(optarg, NULL, 0);   break;
+            case 's': sentCount = (int)strtoul(optarg, NULL, 0); break;
+            case 'r': recvCount = (int)strtoul(optarg, NULL, 0); break;
+            case 'm': mtu = (int)strtoul(optarg, NULL, 0);       break;
+
+            case '?':
+            {
+                if (strchr("vsrm", optopt))
+                {
+                    printf("Option %c requires value\n", optopt);
+                }
+                else
+                {
+                    printf("Unhandled option %c\n", isalnum(optopt) ? optopt : ' ');
+                }
+                return;
+            }
+
+            default:
+                break;
+        }
+    }
+
+    (void)orp_SyncSend(syncType, version, sentCount, recvCount, mtu);
 }
 
 /* > help
@@ -429,7 +650,9 @@ bool commandDispatch(char *request)
             case ORPCLI_CMD_PUSH:    commandPush(request); break;
             case ORPCLI_CMD_GET:     commandGet(request); break;
             case ORPCLI_CMD_EXAMPLE: commandExample(request); break;
+            case ORPCLI_CMD_FILE:    commandFileTransfer(request); break;
             case ORPCLI_CMD_REPLY:   commandRespond(request); break;
+            case ORPCLI_CMD_SYNC:    commandSync(request); break;
             case ORPCLI_CMD_HELP:    commandHelp(request); break;
             case ORPCLI_CMD_QUIT:    return false;
             default:
