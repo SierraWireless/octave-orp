@@ -111,9 +111,15 @@
 #define  ORP_PKT_RESP_SENSOR_CALL    'B'   // type[1] status[1] pad[2]
 
 // Version 2
-#define  ORP_PKT_SYNC_SYN            'Y'   // type[1] version[1] sequence[2] time[] sent[] received[]
-#define  ORP_PKT_SYNC_SYNACK         'y'   // type[1] unused[1]  sequence[2] sent[] received[]
-#define  ORP_PKT_SYNC_ACK            'z'   // type[1] unused[1]  sequence[2] sent[] received[]
+#define  ORP_PKT_SYNC_SYN            'Y'   // type[1] version[1] sequence[2] time[] sent[] received[] mtu[]
+#define  ORP_PKT_SYNC_SYNACK         'y'   // type[1] version[1] sequence[2] sent[] received[] mtu[]
+#define  ORP_PKT_SYNC_ACK            'z'   // type[1] unused[1]  sequence[2]
+
+#define  ORP_PKT_RQST_FILE_DATA      'T'   // type[1] unused[1]  sequence[2] data[]
+#define  ORP_PKT_RESP_FILE_DATA      't'   // type[1] status[1]  sequence[2]
+
+#define  ORP_PKT_NTFY_FILE_CONTROL   'L'   // type[1] event[1]   sequence[2] data[]
+#define  ORP_PKT_RESP_FILE_CONTROL   'l'   // type[1] status[1]  sequence[2]
 
 #define  ORP_PKT_RESP_UNKNOWN_RQST   '?'   // type[1] status[1] pad[2]
 
@@ -123,12 +129,13 @@
 
 
 // Variable length field identifiers
-#define  ORP_FIELD_ID_PATH       'P'   //
-#define  ORP_FIELD_ID_TIME       'T'   //
-#define  ORP_FIELD_ID_UNITS      'U'   //
-#define  ORP_FIELD_ID_DATA       'D'   //
-#define  ORP_FIELD_ID_RECV_COUNT 'R'   //
-#define  ORP_FIELD_ID_SENT_COUNT 'S'   //
+#define  ORP_FIELD_ID_PATH       'P'   // Path
+#define  ORP_FIELD_ID_TIME       'T'   // Timestamp
+#define  ORP_FIELD_ID_UNITS      'U'   // Units
+#define  ORP_FIELD_ID_DATA       'D'   // Data
+#define  ORP_FIELD_ID_RECV_COUNT 'R'   // Received byte count
+#define  ORP_FIELD_ID_SENT_COUNT 'S'   // Sent byte count
+#define  ORP_FIELD_ID_MTU        'M'   // Maximum Transfer Unit
 
 
 // Data types
@@ -154,7 +161,13 @@
 #define  ORP_OFFSET_VERSION       1    //
 
 
-// Field masks
+/* Field masks - Used to indicate which fields are required for a packet
+ * Note:  The following masks are mutually exclusive:
+ *     ORP_MASK_DATA_TYPE
+ *     ORP_MASK_STATUS
+ *     ORP_MASK_VERSION
+ *     ORP_MASK_EVENT
+ */
 #define ORP_MASK_PACK_TYPE        0x0001
 #define ORP_MASK_DATA_TYPE        0x0002
 #define ORP_MASK_SEG_NUM          0x0004
@@ -164,9 +177,9 @@
 #define ORP_MASK_DATA             0x0040
 #define ORP_MASK_RECV_COUNT       0x0080
 #define ORP_MASK_SENT_COUNT       0x0100
-
 #define ORP_MASK_STATUS           0x0200
 #define ORP_MASK_VERSION          0x0400
+#define ORP_MASK_EVENT            0x0800
 
 
 // Status codes:  Use @-Z (0x40-0x5A) and subtract 0x40
@@ -250,6 +263,12 @@ orp_PacketTypeTable[] =
     { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,     /* no mandatory fields for incomming */   },
     { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,  /* no mandatory fields for incomming */   },
     { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,     /* no mandatory fields for incomming */   },
+
+    { ORP_PKT_RQST_FILE_DATA,      ORP_RQST_FILE_DATA,      ORP_MASK_DATA                      },
+    { ORP_PKT_RESP_FILE_DATA,      ORP_RESP_FILE_DATA,      ORP_MASK_STATUS                    },
+
+    { ORP_PKT_NTFY_FILE_CONTROL,   ORP_NTFY_FILE_CONTROL,   ORP_MASK_EVENT                     },
+    { ORP_PKT_RESP_FILE_CONTROL,   ORP_RESP_FILE_CONTROL,   ORP_MASK_STATUS                    },
 
     { ORP_PKT_RESP_UNKNOWN_RQST,   ORP_RESP_UNKNOWN_RQST,   0                                  },
 
@@ -460,7 +479,7 @@ static size_t orp_TimeEncode
 /* NOTE: There is an error in the ORP service which causes it to reject timestamps containing a
  * decimal point.  This will be corrected in Octave firmware release 3.2.0.
  */
-#if 1
+#if 0
 #define TIME_FMT "%lu"
     unsigned long sec = time;
 #else
@@ -474,6 +493,8 @@ static size_t orp_TimeEncode
 //--------------------------------------------------------------------------------------------------
 /**
  * Decode the timestamp from a packet buffer
+ *
+ * @note:  Only decimal whole numbers permitted and no longer than ORP_PROTOCOL_TIMESTAMP_LEN_MAX
  */
 //--------------------------------------------------------------------------------------------------
 static bool orp_TimeDecode
@@ -539,7 +560,7 @@ static bool orp_TimeDecode
  * Encode the path into a protocol buffer
  */
 //--------------------------------------------------------------------------------------------------
-static size_t orp_PathEncode
+static ssize_t orp_PathEncode
 (
     uint8_t    *buf,
     size_t      bufLen,
@@ -557,7 +578,8 @@ static size_t orp_PathEncode
         // + 1 for ID byte, no null terminator
         if (len + 1 > bufLen)
         {
-            LE_FATAL("Insufficient buffer size %lu", (unsigned long)bufLen);
+            LE_ERROR("Insufficient buffer size %zu", bufLen);
+            return -1;
         }
 
         memmove(buf + 1, path, len);
@@ -574,7 +596,7 @@ static size_t orp_PathEncode
  * Encode data into a packet
  */
 //--------------------------------------------------------------------------------------------------
-static size_t orp_DataEncode
+static ssize_t orp_DataEncode
 (
     uint8_t *buf,
     size_t   bufLen,
@@ -594,7 +616,7 @@ static size_t orp_DataEncode
         dataLen++;
     }
 
-    return dataLen;
+    return (ssize_t)dataLen;
 }
 
 
@@ -605,12 +627,12 @@ static size_t orp_DataEncode
 //--------------------------------------------------------------------------------------------------
 static bool orp_StatusEncode
 (
-    uint8_t     *buf,
-    unsigned int status
+    uint8_t *buf,
+    int      status
 )
 //--------------------------------------------------------------------------------------------------
 {
-    buf[ORP_OFFSET_STATUS] = (uint8_t)((int)ORP_RESP_STATUS_OK - (int)status);
+    buf[ORP_OFFSET_STATUS] = (uint8_t)((int)ORP_RESP_STATUS_OK - status);
     return true;
 }
 
@@ -622,35 +644,38 @@ static bool orp_StatusEncode
 //--------------------------------------------------------------------------------------------------
 static bool orp_StatusDecode
 (
-    uint8_t      *buf,
-    unsigned int *status
+    uint8_t *buf,
+    int     *status
 )
 //--------------------------------------------------------------------------------------------------
 {
-    *status = (unsigned int)((int)ORP_RESP_STATUS_OK - (int)buf[ORP_OFFSET_STATUS]);
+    *status = ((int)ORP_RESP_STATUS_OK - (int)buf[ORP_OFFSET_STATUS]);
     return true;
 }
 
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Encode the protocol version into an ascii packet
+ * Encode an enum as an ASCII character:
+ *      0:15 -> '0':'F'
+ *     16:35 -> 'G':'Z'
  */
 //--------------------------------------------------------------------------------------------------
-static bool orp_VersionEncode
+static bool orp_EnumEncode
 (
     uint8_t *buf,
-    uint8_t  version
+    unsigned int offset,
+    int enumValue
 )
 //--------------------------------------------------------------------------------------------------
 {
-    if (version <= 9)
+    if (enumValue <= 9)
     {
-        buf[ORP_OFFSET_VERSION] = '0' + version;
+        buf[offset] = '0' + enumValue;
     }
-    else if (10 <= version && version <= 15)
+    else if (10 <= enumValue && enumValue <= 35)
     {
-        buf[ORP_OFFSET_VERSION] = 'A' + (version - 10);
+        buf[offset] = 'A' + (enumValue - 10);
     }
     else
     {
@@ -662,23 +687,26 @@ static bool orp_VersionEncode
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Decode the protocol version from an ascii packet
+ * Decode an ASCII character as an enum:
+ *     '0':'F' ->  0:15
+ *     'G':'Z' -> 16:35
  */
 //--------------------------------------------------------------------------------------------------
-static bool orp_VersionDecode
+static bool orp_EnumDecode
 (
     uint8_t *buf,
-    short int *version
+    unsigned int offset,
+    int *version
 )
 //--------------------------------------------------------------------------------------------------
 {
-    char c = toupper(buf[ORP_OFFSET_VERSION]);
-    
+    char c = toupper(buf[offset]);
+
     if ('0' <= c || c <= '9')
     {
         *version = c - '0';
     }
-    else if ('A' <= c || c <= 'F')
+    else if ('A' <= c || c <= 'Z')
     {
         *version = c - 'A' + 10;
     }
@@ -708,33 +736,38 @@ static bool orp_PacketByte1Encode
 )
 //--------------------------------------------------------------------------------------------------
 {
-    // SYN | SYNACK | ACK
-    if (   (ORP_SYNC_SYN    == msg->type)
-        || (ORP_SYNC_SYNACK == msg->type)
-        || (ORP_SYNC_ACK    == msg->type))
+    bool status = true;
+
+    do
     {
-        if (!orp_VersionEncode(buf, ORP_PROTOCOL_V2))
+        if (orp_FieldRequired(msg->type, ORP_MASK_STATUS))
         {
-            return false;
+            status = orp_StatusEncode(buf, msg->status);
+            break;
         }
-    }
-    // Response
-    else if (ORP_RESPONSE_MASK & msg->type)
+        if (orp_FieldRequired(msg->type, ORP_MASK_DATA_TYPE))
+        {
+            status = orp_DataTypeEncode(buf, msg->dataType);
+            break;
+        }
+        if (orp_FieldRequired(msg->type, ORP_MASK_VERSION))
+        {
+            status = orp_EnumEncode(buf, 1, ORP_PROTOCOL_V2);
+            break;
+        }
+        if (orp_FieldRequired(msg->type, ORP_MASK_EVENT))
+        {
+            status = orp_EnumEncode(buf, 1, msg->status);
+            break;
+        }
+
+    } while (0);
+
+    if (!status)
     {
-        if (!orp_StatusEncode(buf, msg->status))
-        {
-            return false;
-        }
+        LE_ERROR("Failed to encode packet byte 1");
     }
-    // Request
-    else
-    {
-        if (!orp_DataTypeEncode(buf, msg->dataType))
-        {
-            return false;
-        }
-    }
-    return true;
+    return status;
 }
 
 
@@ -758,27 +791,30 @@ static bool orp_PacketByte1Decode
 {
     bool status = true;
 
-    // SYN | SYNACK | ACK
-    if (   (ORP_SYNC_SYN    == msg->type)
-        || (ORP_SYNC_SYNACK == msg->type)
-        || (ORP_SYNC_ACK    == msg->type))
+    do
     {
-        status = orp_VersionDecode(buf, &msg->version);
-    }
-    // Response
-    else if (ORP_RESPONSE_MASK & msg->type)
-    {
-        status = orp_StatusDecode(buf, &msg->status);
-    }
-    // Request
-    else
-    {
-        // Data Type is not mandatory for all packets
+        if (orp_FieldRequired(msg->type, ORP_MASK_STATUS))
+        {
+            status = orp_StatusDecode(buf, &msg->status);
+            break;
+        }
         if (orp_FieldRequired(msg->type, ORP_MASK_DATA_TYPE))
         {
             status = orp_DataTypeDecode(buf, &msg->dataType);
+            break;
         }
-    }
+        if (orp_FieldRequired(msg->type, ORP_MASK_VERSION))
+        {
+            status = orp_EnumDecode(buf, 1, &msg->version);
+            break;
+        }
+        if (orp_FieldRequired(msg->type, ORP_MASK_EVENT))
+        {
+            status = orp_EnumDecode(buf, 1, &msg->status);
+            break;
+        }
+
+    } while (0);
 
     if (!status)
     {
@@ -790,10 +826,34 @@ static bool orp_PacketByte1Decode
 
 //--------------------------------------------------------------------------------------------------
 /**
+ * Encode the maximum transfer size into a protocol buffer
+ */
+//--------------------------------------------------------------------------------------------------
+static ssize_t orp_MtuEncode
+(
+    uint8_t *buf,
+    size_t   bufLen,
+    int      mtu
+)
+//--------------------------------------------------------------------------------------------------
+{
+    ssize_t len = snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_MTU, mtu);
+
+    if (bufLen <= len)
+    {
+        LE_ERROR("Insufficient buffer size for mtu: %zu", bufLen);
+        len = -1;
+    }
+    return len;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+/**
  * Encode the sent count into a protocol buffer
  */
 //--------------------------------------------------------------------------------------------------
-static size_t orp_SentCountEncode
+static ssize_t orp_SentCountEncode
 (
     uint8_t *buf,
     size_t   bufLen,
@@ -801,7 +861,7 @@ static size_t orp_SentCountEncode
 )
 //--------------------------------------------------------------------------------------------------
 {
-    return (count < 0) ? 0 : snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_SENT_COUNT, count);
+    return (count < 0) ? -1 : snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_SENT_COUNT, count);
 }
 
 
@@ -810,7 +870,7 @@ static size_t orp_SentCountEncode
  * Encode the received count into a protocol buffer
  */
 //--------------------------------------------------------------------------------------------------
-static size_t orp_ReceivedCountEncode
+static ssize_t orp_ReceivedCountEncode
 (
     uint8_t *buf,
     size_t   bufLen,
@@ -818,7 +878,7 @@ static size_t orp_ReceivedCountEncode
 )
 //--------------------------------------------------------------------------------------------------
 {
-    return (count < 0) ? 0 : snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_RECV_COUNT, count);
+    return (count < 0) ? -1 : snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_RECV_COUNT, count);
 }
 
 
@@ -845,7 +905,7 @@ static bool orp_ProtocolDecode_v1
     {
         if (pktLen < ORP_PACKET_LEN_MIN)
         {
-            LE_ERROR("Packet too short: %lu", (unsigned long)pktLen);
+            LE_ERROR("Packet too short: %zu", pktLen);
             break;
         }
 
@@ -908,6 +968,17 @@ static bool orp_ProtocolDecode_v1
                         state = DONE;
                         break;
 
+                    case ORP_FIELD_ID_MTU:
+                        state = INFIELD;
+                        errno = 0;
+                        msg->mtu = strtoul((const char *)&pktBuf[i + 1], &endPtr, 0);
+                        if (0 != errno)
+                        {
+                            LE_ERROR("Failed to decode max transfer size");
+                            state = ERROR;
+                        }
+                        break;
+
                     case ORP_FIELD_ID_RECV_COUNT:
                         state = INFIELD;
                         errno = 0;
@@ -944,7 +1015,9 @@ static bool orp_ProtocolDecode_v1
          */
         pktBuf[pktLen] = '\0';
 
-        // Convert the string timestamp to double, if present.  Done here to ensure string is null terminated
+        /* Convert the string timestamp to double, if present.  Done here to ensure string is
+         * null terminated
+         */
         if (timeStr && strlen(timeStr))
         {
             orp_TimeDecode(&msg->timestamp, timeStr);
@@ -958,12 +1031,12 @@ static bool orp_ProtocolDecode_v1
         }
         else
         {
-            LE_DEBUG("Decoded: %u %d %04X path: %s time: %lf unit: %s dataLen: %lu",
+            LE_DEBUG("Decoded: %u %d %04X path: %s time: %lf unit: %s dataLen: %zu",
                      msg->type, msg->dataType, msg->sequenceNum,
                      msg->path ? msg->path : "",
                      msg->timestamp,
                      msg->unit ? msg->unit : "",
-                     (unsigned long)msg->dataLen);
+                     msg->dataLen);
         }
 
     } while (0);
@@ -1031,6 +1104,10 @@ static bool orp_ProtocolEncode_v1
                 packet[index++] = ',';
             }
             fieldLen = orp_PathEncode(packet + index, len - index, msg->path);
+            if (fieldLen < 0)
+            {
+                break;
+            }
             index += fieldLen;
         }
 
@@ -1042,13 +1119,31 @@ static bool orp_ProtocolEncode_v1
                 packet[index++] = ',';
             }
             fieldLen = orp_DataEncode(packet + index, len - index, msg->data, msg->dataLen);
+            if (fieldLen < 0)
+            {
+                break;
+            }
             index += fieldLen;
             msg->dataLen -= fieldLen;
         }
 
-        // Version 2: Append send and received counts if this is a sync packet
-        if (ORP_SYNC_SYN == msg->type)
+        // Version 2: Sync packets. Append sent and received counts and MTU
+        if (   (ORP_SYNC_SYN    == msg->type)
+            || (ORP_SYNC_SYNACK == msg->type))
         {
+            if (msg->mtu >= 0)
+            {
+                if (fieldLen)
+                {
+                    packet[index++] = ',';
+                }
+                fieldLen = orp_MtuEncode(packet + index, len - index, msg->mtu);
+                if (fieldLen < 0)
+                {
+                    break;
+                }
+                index += fieldLen;
+            }
             if (msg->sentCount >= 0)
             {
                 if (fieldLen)
@@ -1056,6 +1151,10 @@ static bool orp_ProtocolEncode_v1
                     packet[index++] = ',';
                 }
                 fieldLen = orp_SentCountEncode(packet + index, len - index, msg->sentCount);
+                if (fieldLen < 0)
+                {
+                    break;
+                }
                 index += fieldLen;
             }
             if (msg->receivedCount >= 0)
@@ -1065,6 +1164,10 @@ static bool orp_ProtocolEncode_v1
                     packet[index++] = ',';
                 }
                 fieldLen = orp_ReceivedCountEncode(packet + index, len - index, msg->receivedCount);
+                if (fieldLen < 0)
+                {
+                    break;
+                }
                 index += fieldLen;
             }
         }

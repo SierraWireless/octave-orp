@@ -100,6 +100,8 @@
                                          + ORP_PROTOCOL_UNITS_LEN_MAX \
                                          + ORP_PROTOCOL_TIMESTAMP_LEN_MAX )
 
+// Minimum size which a frame must support
+#define ORP_PROTOCOL_FRAME_LEN_MIN      128
 
 //--------------------------------------------------------------------------------------------------
 /**
@@ -119,7 +121,7 @@ enum orp_ProtocolVersion
  * Packet types
  */
 //--------------------------------------------------------------------------------------------------
-#define ORP_RESPONSE_MASK 0x10
+#define ORP_RESPONSE_MASK 0x80
 enum orp_PacketType
 {
     ORP_PACKET_TYPE_UNKNOWN = 0,
@@ -164,6 +166,12 @@ enum orp_PacketType
     ORP_SYNC_SYNACK         = 14,
     ORP_SYNC_ACK            = 15,
 
+    ORP_RQST_FILE_DATA      = 16,
+    ORP_RESP_FILE_DATA      = ORP_RQST_FILE_DATA     | ORP_RESPONSE_MASK,
+
+    ORP_NTFY_FILE_CONTROL   = 17,
+    ORP_RESP_FILE_CONTROL   = ORP_NTFY_FILE_CONTROL  | ORP_RESPONSE_MASK,
+
     ORP_RESP_UNKNOWN_RQST   = 128                    | ORP_RESPONSE_MASK,
 };
 
@@ -193,10 +201,12 @@ enum orp_IoDataType
 struct orp_Message
 {
     enum orp_PacketType         type;          ///< Type of ORP packet
+    // TODO - Consider using a union for mutually exclusive fields (minor savings)
     enum orp_IoDataType         dataType;      ///< Data type of resource
+    int                         version;       ///< Protocol version (sync packets only)
+    int                         status;        ///< Status of a response
+
     uint16_t                    sequenceNum;   ///< Number of this packet (16-bit rollover)
-    short                       version;       ///< Protocol version (sync packets only)
-    unsigned int                status;        ///< Status of a response
     double                      timestamp;     ///< Timestamp read/write
     const char                 *path;          ///< Resource path
     const char                 *unit;          ///< Resource units
@@ -204,6 +214,7 @@ struct orp_Message
     size_t                      dataLen;       ///< Data length
     int                         sentCount;     ///< Sent packet count (sync packets only)
     int                         receivedCount; ///< Received packet count (sync packets only)
+    int                         mtu;           ///< Maximum transfer unit (sync packets only)
 };
 
 #define  ORP_TIMESTAMP_INVALID   ((double)(-1))

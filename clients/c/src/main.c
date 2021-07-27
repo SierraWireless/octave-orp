@@ -119,6 +119,7 @@ void processIO(void)
                         printf("Exiting\n");
                         break;
                     }
+                    printf("\norp > ");
                 }
             }
             if (fds[1].revents & POLLIN)
@@ -130,7 +131,6 @@ void processIO(void)
                 printf("Received POLLHUP from %s. Exiting\n", devStr);
                 break;
             }
-            printf("\norp > ");
             fflush(stdout);
         }
         // send preamble byte to keep USB awake
@@ -150,7 +150,10 @@ speed_t baudGet(char *baudStr)
         baud = B38400;
     else if (0 == strcmp("57600", baudStr))
         baud = B57600;
-
+    else if (0 == strcmp("460800", baudStr))
+        baud = B460800;
+    else if (0 == strcmp("921600", baudStr))
+        baud = B921600;
     return baud;
 }
 

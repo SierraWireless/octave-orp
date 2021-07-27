@@ -37,6 +37,7 @@
 #include "orpUtils.h"
 #include "hdlc.h"
 #include "legato.h"
+#include "orpFile.h"
 
 
 /* Buffers:
@@ -253,10 +254,17 @@ static le_result_t orp_ClientMessageSend
     size_t   packetBufferLen = sizeof(txPacketBuf);
     uint8_t *frameBuffer = txFrameBuf;
     size_t   frameBufferSize = sizeof(txFrameBuf);
+    bool     syncMessage = false;
 
-
-    // Set sequence number
-    message->sequenceNum = sequenceNum;
+    // Set sequence number if this is anything other than a sync packet
+    if (ORP_SYNC_SYN == message->type || ORP_SYNC_SYNACK == message->type || ORP_SYNC_ACK == message->type)
+    {
+        syncMessage = true;
+    }
+    else
+    {
+        message->sequenceNum = sequenceNum;
+    }
 
     // Encode the packet
     if (!orp_Encode(packetBuffer, &packetBufferLen, message))
@@ -284,7 +292,10 @@ static le_result_t orp_ClientMessageSend
         goto err;
     }
 
-    sequenceNum++;
+    if (!syncMessage)
+    {
+        sequenceNum++;
+    }
     return LE_OK;
 
 err:
@@ -319,6 +330,7 @@ static size_t orp_Deframe
 {
     static size_t rxPacketLen = 0;
     size_t consumed = 0;
+    bool ack = false;
 
 
     do
@@ -364,18 +376,44 @@ static size_t orp_Deframe
         }
 
         printf("\nReceived:");
-        printf(" '%c%c%01X%01X%s', (%zu bytes)",
-               rxPacketBuf[0], rxPacketBuf[1], rxPacketBuf[2], rxPacketBuf[3], &rxPacketBuf[4], rxPacketLen);
+        if (message.type != ORP_RQST_FILE_DATA)
+        {
+            printf(" '%c%c%01X%01X%s', (%zu bytes)",
+                   rxPacketBuf[0], rxPacketBuf[1], rxPacketBuf[2], rxPacketBuf[3], &rxPacketBuf[4], rxPacketLen);
+        }
+        else
+        {
+            if (message.data && message.dataLen)
+            {
+                // Auto-ack file transfer data, if using auto mode
+                if (orp_FileTransferGetAuto())
+                {
+                    ack = true;
+                }
+                orp_FileDataCache(message.data, message.dataLen);
+            }
+
+            // In case of file transfer, do not print data (rxPacketBuf[4]) which can be binary
+            printf(" '%c%c%01X%01X', (%zu bytes)",
+                   rxPacketBuf[0], rxPacketBuf[1], rxPacketBuf[2], rxPacketBuf[3], rxPacketLen);
+        }
         printf("\n");
         orp_MessagePrint(&message);
 
         orp_Dispatch(&message);
+
+        printf("\norp > ");
 
         // Reset hdlc context and packet length for the next frame
         hdlc_Init(&rxHdlcContext);
         rxPacketLen = 0;
 
     } while (frameLen > 0);
+
+    if (ack)
+    {
+        (void)orp_Respond(ORP_RESP_FILE_DATA, 0);
+    }
 
     return consumed;
 
@@ -620,12 +658,103 @@ le_result_t orp_Respond
 
     switch (type)
     {
-        case ORP_RESP_HANDLER_CALL: break;
-        case ORP_RESP_SENSOR_CALL: break;
-        case ORP_SYNC_SYNACK: break;
-        case ORP_SYNC_ACK: break;
-        default: return LE_BAD_PARAMETER;
+        case ORP_RESP_HANDLER_CALL:
+            break;
+
+        case ORP_RESP_SENSOR_CALL:
+            break;
+
+        case ORP_RESP_FILE_DATA:
+            if (LE_OK == status)
+            {
+                // Data is being accepted, flush to file if required
+                orp_FileDataFlush();
+            }
+            break;
+
+        case ORP_RESP_FILE_CONTROL:
+            break;
+
+        default:
+            return LE_BAD_PARAMETER;
     }
     orp_MessageInit(&message, type, status);
+    return orp_ClientMessageSend(&message);
+}
+
+//--------------------------------------------------------------------------------------------------
+/**
+ * Send a sync packet
+ */
+//--------------------------------------------------------------------------------------------------
+le_result_t orp_SyncSend
+(
+    enum orp_PacketType type,
+    int version,
+    int sentCount,
+    int recvCount,
+    int mtu
+)
+{
+    struct orp_Message message;
+
+    switch (type)
+    {
+        case ORP_SYNC_SYN:    break;
+        case ORP_SYNC_SYNACK: break;
+        case ORP_SYNC_ACK:    break;
+        default: return LE_BAD_PARAMETER;
+    }
+
+    orp_MessageInit(&message, type, LE_OK);
+    message.version = version;
+    message.sentCount = sentCount;
+    message.receivedCount = recvCount;
+    message.mtu = mtu;
+
+    return orp_ClientMessageSend(&message);
+}
+
+//--------------------------------------------------------------------------------------------------
+/**
+ * Send a file transfer notification (a control message)
+ */
+//--------------------------------------------------------------------------------------------------
+le_result_t orp_FileTransferNotify
+(
+    unsigned int status,
+    const char *controlData
+)
+{
+    struct orp_Message message;
+
+    orp_MessageInit(&message, ORP_NTFY_FILE_CONTROL, status);
+    if (controlData)
+    {
+        message.data = (void *)controlData;
+        message.dataLen = strlen(controlData);
+    }
+    return orp_ClientMessageSend(&message);
+}
+
+//--------------------------------------------------------------------------------------------------
+/**
+ * Send file transfer data
+ */
+//--------------------------------------------------------------------------------------------------
+le_result_t orp_FileTransferData
+(
+    unsigned int status,
+    const char *fileData
+)
+{
+    struct orp_Message message;
+
+    orp_MessageInit(&message, ORP_RQST_FILE_DATA, status);
+    if (fileData)
+    {
+        message.data = (void *)fileData;
+        message.dataLen = strlen(fileData);
+    }
     return orp_ClientMessageSend(&message);
 }
