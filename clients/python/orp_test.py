@@ -44,6 +44,7 @@
 
 import sys
 import os
+import threading
 from time import sleep
 import argparse
 
@@ -95,13 +96,19 @@ def sync_acknowledge(data):
         h.sendFrame(packet.encode())
         print('\nAcknowledged sensor notification\n>')
 
+
 #
 # Callback to receive and decode incoming frames
 #
 def frame_callback(data):
-    decode_response(data)
-    if auto_ack == True:
-        sync_acknowledge(data)
+    try:
+        decode_response(data)
+        if auto_ack == True:
+            sync_acknowledge(data)
+    except Exception as e:
+        print(f"Caught exception <{e}> in frame_callback: exiting...")
+        keep_alive_event.clear()
+        raise
 
 # =========================================================================== #
 
@@ -138,9 +145,11 @@ if args.no_auto_ack == False:
 #
 # Using the default: 8/N/1
 s = serial.Serial(port=dev, baudrate=baud)
+keep_alive_event = threading.Event()
 
 h = HDLC(s)
 h.startReader(onFrame=frame_callback)
+keep_alive_event.set()
 
 print('ORP Serial Client - "q" to exit')
 print('using device: ' + dev + ', speed: ' + baud + ', 8N1')
@@ -151,13 +160,14 @@ print('enter commands\n')
 packet = ''
 preamble = '~~'
 
-while True:
+while keep_alive_event.is_set():
     if sys.version_info[0] == 2:
         request = raw_input('> ')
     else:
         request = input('> ')
     if request == 'q':
         print('exiting')
+        keep_alive_event.clear()
         break
 
 	# remove trailing whitespace
