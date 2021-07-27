@@ -649,7 +649,7 @@ def decode_response(response):
         # Positional fields:
         ptype      = chr(response[0])
         status_ver = response[1]
-        seq_num    = int(response[2:4])
+        seq_num    = int.from_bytes(response[2:4], "big")
         # Labeled, variable length fields
         var_length = (response[4:len(response)]).decode("utf-8")
         print('Received     : ' + chr(response[0]) + chr(response[1]) + chr(response[2]) + chr(response[3]) + var_length)
