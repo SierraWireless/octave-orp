@@ -36,6 +36,7 @@
 #include "orpClient.h"
 #include "orpUtils.h"
 #include "hdlc.h"
+#include "at.h"
 #include "legato.h"
 #include "orpFile.h"
 
@@ -92,7 +93,6 @@ static hdlc_context_t rxHdlcContext;
 // Count of the number of frames transmitted so far.  This will roll-over
 static uint16_t sequenceNum = 0;
 
-
 //--------------------------------------------------------------------------------------------------
 /**
  * Initialize local variables and state
@@ -116,7 +116,10 @@ bool orp_ClientInit
     printf("Protocol codec initialized\n");
     fd = fileDescriptor;
     sequenceNum = 0;
-    hdlc_Init(&rxHdlcContext);
+    if (mode == MODE_HDLC)
+    {
+        hdlc_Init(&rxHdlcContext);
+    }
 
     return true;
 }
@@ -153,7 +156,30 @@ static bool orp_Decode
     return codec.decode(packetBuffer, packetBufferLen, message);
 }
 
+//--------------------------------------------------------------------------------------------------
+/**
+ * Frame a packet as AT
+ *
+ */
+//--------------------------------------------------------------------------------------------------
+static ssize_t orp_AtEnframe
+(
+    uint8_t *frameBuf,
+    size_t   frameBufSize,
+    uint8_t *packet,
+    size_t   packetLen
+)
+{
+    int i;
+    size_t frameLen;
+    size_t count = packetLen;
 
+    memset(frameBuf, 0, frameBufSize);
+
+    // AT mode
+    frameLen = at_Pack(frameBuf, frameBufSize, packet, &count);
+
+}
 //--------------------------------------------------------------------------------------------------
 /**
  * Frame a packet as HDLC
@@ -162,7 +188,7 @@ static bool orp_Decode
  * buffers which are smaller than the frame size
  */
 //--------------------------------------------------------------------------------------------------
-static ssize_t orp_Enframe
+static ssize_t orp_HdlcEnframe
 (
     uint8_t *frameBuf,
     size_t   frameBufSize,
@@ -175,6 +201,7 @@ static ssize_t orp_Enframe
     size_t count = packetLen;
 
 
+    printf("orp_HdlcEnframe\n");
     LE_ASSERT(frameBuf && packet);
 
     if (frameBufSize < packetLen + HDLC_OVERHEAD_BYTES_COUNT)
@@ -273,17 +300,30 @@ static le_result_t orp_ClientMessageSend
         goto err;
     }
 
-    // Frame packet
-    ssize_t frameLen = orp_Enframe(frameBuffer, frameBufferSize, packetBuffer, packetBufferLen);
-    if (frameLen < 0)
+    ssize_t frameLen;
+    if (mode == MODE_HDLC)
     {
-        printf("Failed to frame packet %zd\n", frameLen);
-        goto err;
+        // Frame packet
+        frameLen = orp_HdlcEnframe(frameBuffer, frameBufferSize, packetBuffer, packetBufferLen);
+        if (frameLen < 0)
+        {
+            printf("Failed to frame packet %zd\n", frameLen);
+            goto err;
+        }
+        printf("Sending:");
+        printf(" '%c%c%c%01u%01u%s', (%zu bytes)\n",
+            frameBuffer[0], frameBuffer[1], frameBuffer[2], frameBuffer[3], frameBuffer[4], &frameBuffer[5], frameLen);
+
+    } else {
+        frameLen = orp_AtEnframe(frameBuffer, frameBufferSize, packetBuffer, packetBufferLen);
+        if (frameLen < 0)
+        {
+            printf("Failed to frame packet %zd\n", frameLen);
+            goto err;
+        }
+        printf("Sending:");
+        printf(" '%s', (%zu bytes)\n", frameBuffer, frameLen);
     }
-    // Send the request
-    printf("Sending:");
-    printf(" '%c%c%c%01u%01u%s', (%zu bytes)\n",
-           frameBuffer[0], frameBuffer[1], frameBuffer[2], frameBuffer[3], frameBuffer[4], &frameBuffer[5], frameLen);
     orp_MessagePrint(message);
 
     if (!orp_Transmit(frameBuffer, frameLen))
@@ -316,13 +356,32 @@ static void orp_Dispatch
     // nothing implemented yet
 }
 
+//--------------------------------------------------------------------------------------------------
+/**
+ * Deframe and decode AT packets
+ */
+//--------------------------------------------------------------------------------------------------
+static size_t orp_AtDeframe
+(
+    uint8_t *frameBuf,
+    size_t   frameLen
+)
+{
+    for(int i=0; i<frameLen; i++)
+    {
+        printf("%c", frameBuf[i]);
+    }
+
+    return frameLen;
+}
+
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Deframe and decode packets
+ * Deframe and decode HDLC packets
  */
 //--------------------------------------------------------------------------------------------------
-static size_t orp_Deframe
+static size_t orp_HdlcDeframe
 (
     uint8_t *frameBuf,
     size_t   frameLen
@@ -447,7 +506,14 @@ void orp_ClientReceive
     else
     {
         rxFrameLen += count;
-        count = orp_Deframe(rxFrameBuf, rxFrameLen);
+        if (MODE_HDLC == mode)
+        {
+            count = orp_HdlcDeframe(rxFrameBuf, rxFrameLen);
+        }
+        else
+        {
+            count = orp_AtDeframe(rxFrameBuf, rxFrameLen);
+        }
         rxFrameLen -= count;
         // Shift remaining bytes in the Frame Buffer to the beginning, for processing next time
         if (rxFrameLen > 0)

@@ -53,6 +53,7 @@ extern bool commandDispatch(char *request);
 // String lengths for some arguments
 #define DEV_STR_LEN_MAX   128
 #define BAUD_STR_LEN_MAX   32
+#define MODE_STR_LEN_MAX   5
 
 //--------------------------------------------------------------------------------------------------
 /**
@@ -76,6 +77,7 @@ void usage(void)
 
 static char devStr[DEV_STR_LEN_MAX]   = {'\0'};
 static char baudStr[BAUD_STR_LEN_MAX] = {'\0'};
+static char modeStr[MODE_STR_LEN_MAX] = {'\0'};
 static struct pollfd fds[2];
 
 //--------------------------------------------------------------------------------------------------
@@ -146,6 +148,8 @@ speed_t baudGet(char *baudStr)
         baud = B115200;
     else if (0 == strcmp("9600", baudStr))
         baud = B9600;
+    else if (0 == strcmp("19200", baudStr))
+        baud = B19200;
     else if (0 == strcmp("38400", baudStr))
         baud = B38400;
     else if (0 == strcmp("57600", baudStr))
@@ -194,15 +198,17 @@ int configureSerial(char *devStr, char *baudStr)
     return fd;
 }
 
+// Transmission mode : MODE_AT or MODE_HDLC.
+uint8_t mode=MODE_HDLC;
+
 int main(int argc, char **argv)
 {
     int c;
     int i;
     bool status = false;
-
     opterr = 0;
 
-    while ((c = getopt(argc, argv, "b:d:h:v")) != -1)
+    while ((c = getopt(argc, argv, "b:d:m:h:v")) != -1)
     {
         switch (c)
         {
@@ -212,6 +218,13 @@ int main(int argc, char **argv)
 
             case 'd':  // serial device
                 strncpy(devStr, optarg, sizeof(devStr));
+                break;
+
+            case 'm':  // transmission mode
+                if (0 == strcmp(optarg, "AT"))
+                {
+                    mode = MODE_AT;
+                }
                 break;
 
             case '?':
@@ -239,7 +252,7 @@ int main(int argc, char **argv)
     }
 
     printf("ORP Serial Client - \"h\" for help, \"q\" to exit\n");
-    printf("using device: %s, Baud: %s\n", devStr, baudStr);
+    printf("using device: %s, Baud: %s, Mode %d\n", devStr, baudStr, mode);
 
     fds[1].fd = configureSerial(devStr, baudStr);
     if (fds[1].fd < 0)
@@ -252,6 +265,7 @@ int main(int argc, char **argv)
     }
 
     processIO();
+
 
 done:
     if (fds[1].fd > 0)

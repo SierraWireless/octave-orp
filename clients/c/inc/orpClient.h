@@ -40,6 +40,19 @@
 
 //--------------------------------------------------------------------------------------------------
 /**
+ * Tansmission mode
+ */
+//--------------------------------------------------------------------------------------------------
+
+extern uint8_t mode;
+
+enum mode{
+    MODE_HDLC,
+    MODE_AT
+};
+
+//--------------------------------------------------------------------------------------------------
+/**
  * Initialze internal data for the client
  *
  * @param:  fileDescriptor: An open file descriptor for reading and writing framed ORP packets
