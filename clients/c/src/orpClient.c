@@ -179,6 +179,7 @@ static ssize_t orp_AtEnframe
     // AT mode
     frameLen = at_Pack(frameBuf, frameBufSize, packet, &count);
 
+    return frameLen;
 }
 //--------------------------------------------------------------------------------------------------
 /**
@@ -200,8 +201,6 @@ static ssize_t orp_HdlcEnframe
     ssize_t frameLen;
     size_t count = packetLen;
 
-
-    printf("orp_HdlcEnframe\n");
     LE_ASSERT(frameBuf && packet);
 
     if (frameBufSize < packetLen + HDLC_OVERHEAD_BYTES_COUNT)
@@ -314,7 +313,9 @@ static le_result_t orp_ClientMessageSend
         printf(" '%c%c%c%01u%01u%s', (%zu bytes)\n",
             frameBuffer[0], frameBuffer[1], frameBuffer[2], frameBuffer[3], frameBuffer[4], &frameBuffer[5], frameLen);
 
-    } else {
+    }
+    else
+    {
         frameLen = orp_AtEnframe(frameBuffer, frameBufferSize, packetBuffer, packetBufferLen);
         if (frameLen < 0)
         {
@@ -358,7 +359,10 @@ static void orp_Dispatch
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Deframe and decode AT packets
+ * Decode AT packets
+ *
+ * No deframe action for AT packets, so simply print the AT result
+ *
  */
 //--------------------------------------------------------------------------------------------------
 static size_t orp_AtDeframe

@@ -40,7 +40,7 @@
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Tansmission mode
+ * Transmission mode
  */
 //--------------------------------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ enum mode{
 
 //--------------------------------------------------------------------------------------------------
 /**
- * Initialze internal data for the client
+ * Initialize internal data for the client
  *
  * @param:  fileDescriptor: An open file descriptor for reading and writing framed ORP packets
  */

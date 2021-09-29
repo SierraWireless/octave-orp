@@ -1,7 +1,7 @@
 /**
- * @file:    at.h
+ * @file:    at.c
  *
- * Purpose:  Simplified Asynchronous HDLC utilities
+ * Purpose:  AT commands utilities
  *
  * MIT License
  *
@@ -37,20 +37,23 @@
 #include "legato.h"
 #include <string.h>
 
-static char* AT_PREFIX="AT+ORP=\"";
-static char* AT_SUFFIX="\"\n";
+static char* at_prefix="AT+ORP=\"";
+static char* at_suffix="\"\n";
 
 //--------------------------------------------------------------------------------------------------
 /**
  * Pack an AT frame
+ *
+ * Prepare the final AT command string from an ORP command
+ *
  */
 //--------------------------------------------------------------------------------------------------
 ssize_t at_Pack
 (
-    uint8_t        *dest,
-    size_t          destlen,
-    uint8_t        *src,
-    size_t         *srclen
+    uint8_t        *dest,              // pointer to first empty byte of destination buffer
+    size_t          destlen,           // number of data bytes to frame into destination
+    uint8_t        *src,               // pointer to first unprocessed byte of source buffer
+    size_t         *srclen             // number of bytes-in / processed-from the source buffer
 )
 //--------------------------------------------------------------------------------------------------
 {
@@ -58,44 +61,44 @@ ssize_t at_Pack
     int dst_idx = -1;
 
     // Sanity check for dest size
-    if(destlen < *srclen + strlen(AT_PREFIX) + strlen(AT_SUFFIX))
+    if(destlen < *srclen + strlen(at_prefix) + strlen(at_suffix))
     {
         LE_ERROR("Dest buffer too small");
         return dst_idx;
     }
 
     // AT command prefix
-    strncpy(dest,AT_PREFIX,destlen);
-    dst_idx = strlen(AT_PREFIX);
+    strncpy(dest, at_prefix, destlen);
+    dst_idx = strlen(at_prefix);
     
     // ORP packet type
-    dest[dst_idx++]=src[src_idx++];
+    dest[dst_idx++] = src[src_idx++];
 
     // ORP data type (may be NULL)
     if (0 != src[src_idx])
     {
-        dest[dst_idx++]=src[src_idx];
+        dest[dst_idx++] = src[src_idx];
     }
     else
     {
-       dest[dst_idx++]='0';
+       dest[dst_idx++] = '0';
     }
 
     src_idx++;
     
     // ORP Seq number fixed to "00" in AT mode
-    dest[dst_idx++]='0'; src_idx++;
-    dest[dst_idx++]='0'; src_idx++;
+    dest[dst_idx++] = '0'; src_idx++;
+    dest[dst_idx++] = '0'; src_idx++;
 
     // ORP command
     while ((src_idx < *srclen) && (dst_idx < destlen))
     {
-        dest[dst_idx++]=src[src_idx++];
+        dest[dst_idx++] = src[src_idx++];
     }
 
     // AT command suffix
-    strncpy(dest + dst_idx, AT_SUFFIX, destlen - dst_idx);
-    dst_idx += strlen(AT_SUFFIX);
+    strncpy(dest + dst_idx, at_suffix, destlen - dst_idx);
+    dst_idx += strlen(at_suffix);
     
     return dst_idx;
 }

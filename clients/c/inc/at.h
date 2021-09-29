@@ -1,7 +1,7 @@
 /**
  * @file:    at.h
  *
- * Purpose:  Simplified Asynchronous HDLC utilities
+ * Purpose: AT commands utilities
  *
  * MIT License
  *

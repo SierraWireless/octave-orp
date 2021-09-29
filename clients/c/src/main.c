@@ -198,8 +198,7 @@ int configureSerial(char *devStr, char *baudStr)
     return fd;
 }
 
-// Transmission mode : MODE_AT or MODE_HDLC.
-uint8_t mode=MODE_HDLC;
+uint8_t mode; // Transmission mode : MODE_AT or MODE_HDLC.
 
 int main(int argc, char **argv)
 {
@@ -207,6 +206,10 @@ int main(int argc, char **argv)
     int i;
     bool status = false;
     opterr = 0;
+
+    /* Default mode is HDLC */
+    mode = MODE_HDLC;
+    strncpy(modeStr, "HDLC", sizeof(modeStr));
 
     while ((c = getopt(argc, argv, "b:d:m:h:v")) != -1)
     {
@@ -224,6 +227,7 @@ int main(int argc, char **argv)
                 if (0 == strcmp(optarg, "AT"))
                 {
                     mode = MODE_AT;
+                    strncpy(modeStr, "AT", sizeof(modeStr));
                 }
                 break;
 
@@ -252,7 +256,7 @@ int main(int argc, char **argv)
     }
 
     printf("ORP Serial Client - \"h\" for help, \"q\" to exit\n");
-    printf("using device: %s, Baud: %s, Mode %d\n", devStr, baudStr, mode);
+    printf("Using device: %s, Baud: %s, Mode %s\n", devStr, baudStr, modeStr);
 
     fds[1].fd = configureSerial(devStr, baudStr);
     if (fds[1].fd < 0)
