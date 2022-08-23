@@ -633,7 +633,6 @@ def encode_request(request):
 # Decode and print contents of an incoming packet
 #
 def decode_response(response):
-
     resp = {}
 
     if sys.version_info[0] == 2:
@@ -649,7 +648,7 @@ def decode_response(response):
         # Positional fields:
         ptype      = chr(response[0])
         status_ver = response[1]
-        seq_num    = int(response[2:4])
+        seq_num    = int.from_bytes(response[2:4], "big")
         # Labeled, variable length fields
         var_length = (response[4:len(response)]).decode("utf-8")
         print('Received     : ' + chr(response[0]) + chr(response[1]) + chr(response[2]) + chr(response[3]) + var_length)
@@ -660,17 +659,22 @@ def decode_response(response):
             print('Message type : ' + test[1])
             resp['responseType'] = test[0]
 
-    # If this is a SYNC packet, byte 1 contains the version number.  Otherwise, it
-    # may contain status
-    if ORP_PKT_SYNC_SYN == ptype or ORP_PKT_SYNC_SYNACK == ptype:
+    # If this is a SYNC packet, byte 1 contains the version number.
+    # Otherwise, it may contain status
+    if ORP_PKT_SYNC_SYN == ptype:
         version = chr(status_ver + 1)
         resp['version'] = version
         print('Version      : ' + version)
+    if ORP_PKT_SYNC_SYNACK == ptype:
+        pass
     else:
         # Status is represented in ASCII, starting with '@' (0x40) for OK.
         # Subtract 0x40 to index into the table, above
         #
-        status = status_list[status_ver - 64]
+        if status_ver >= 64:
+            status = status_list[status_ver - 64]
+        else:
+            status = 'NOT IMPLEMENTED'
         resp['status'] = status
         print('Status       : ' + status)
 

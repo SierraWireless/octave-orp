@@ -92,7 +92,12 @@
 // The maximum sizes of <path>, <units>, and <timestamp>
 #define ORP_PROTOCOL_PATH_LEN_MAX       IO_MAX_RESOURCE_PATH_LEN
 #define ORP_PROTOCOL_UNITS_LEN_MAX      IO_MAX_UNITS_NAME_LEN
-#define ORP_PROTOCOL_TIMESTAMP_LEN_MAX  17  // string representation: 0000000000.000000
+
+#define ORP_PROTOCOL_TIMESTAMP_INTEGER_LEN_MAX 11
+#define ORP_PROTOCOL_TIMESTAMP_DECIMAL_LEN_MAX  6
+#define ORP_PROTOCOL_TIMESTAMP_LEN_MAX (  ORP_PROTOCOL_TIMESTAMP_INTEGER_LEN_MAX \
+                                        + ORP_PROTOCOL_TIMESTAMP_DECIMAL_LEN_MAX \
+                                        + 1 /* for decimal point */ )
 
 // Maximum size of a protocol packet, before accounting for data
 #define ORP_PROTOCOL_LEN_NO_DATA_MAX    (  ORP_PROTOCOL_OVERHEAD_LEN_MAX \
@@ -100,8 +105,16 @@
                                          + ORP_PROTOCOL_UNITS_LEN_MAX \
                                          + ORP_PROTOCOL_TIMESTAMP_LEN_MAX )
 
-// Minimum size which a frame must support
-#define ORP_PROTOCOL_FRAME_LEN_MIN      128
+
+// Field offsets
+#define  ORP_OFFSET_PACKET_TYPE   0    //
+#define  ORP_OFFSET_DATA_TYPE     1    //
+#define  ORP_OFFSET_SEQ_NUM       2    //
+#define  ORP_OFFSET_VARLENGTH     4    //
+
+#define  ORP_OFFSET_STATUS        1    //
+#define  ORP_OFFSET_VERSION       1    //
+
 
 //--------------------------------------------------------------------------------------------------
 /**
@@ -188,9 +201,8 @@ enum orp_IoDataType
     ORP_IO_DATA_TYPE_NUMERIC = 2,  ///< numeric (floating point number)
     ORP_IO_DATA_TYPE_STRING  = 3,  ///< string
     ORP_IO_DATA_TYPE_JSON    = 4,  ///< JSON
+    ORP_IO_DATA_TYPE_UNDEF
 };
-
-#define  ORP_IO_DATA_TYPE_UNDEF  (-1)
 
 
 //--------------------------------------------------------------------------------------------------
@@ -204,7 +216,7 @@ struct orp_Message
     // TODO - Consider using a union for mutually exclusive fields (minor savings)
     enum orp_IoDataType         dataType;      ///< Data type of resource
     int                         version;       ///< Protocol version (sync packets only)
-    int                         status;        ///< Status of a response
+    int                         status;        ///< Status of a response or event
 
     uint16_t                    sequenceNum;   ///< Number of this packet (16-bit rollover)
     double                      timestamp;     ///< Timestamp read/write

@@ -77,7 +77,7 @@ def sync_acknowledge(data):
     else:
         checkPacket = chr(data[0])
 
-    if orp_protocol.ORP_PKT_SYNC_SYN == checkPacket or orp_protocol.ORP_PKT_SYNC_SYNACK == checkPacket:
+    if orp_protocol.ORP_PKT_SYNC_SYN == checkPacket:
         request = 'r y 0'
         packet = encode_request(request)
         h.sendFrame(packet.encode())

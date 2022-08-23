@@ -151,16 +151,6 @@
 #define  ORP_PACKET_LEN_MIN       4    //
 
 
-// Field offsets
-#define  ORP_OFFSET_PACKET_TYPE   0    //
-#define  ORP_OFFSET_DATA_TYPE     1    //
-#define  ORP_OFFSET_SEQ_NUM       2    //
-#define  ORP_OFFSET_VARLENGTH     4    //
-
-#define  ORP_OFFSET_STATUS        1    //
-#define  ORP_OFFSET_VERSION       1    //
-
-
 /* Field masks - Used to indicate which fields are required for a packet
  * Note:  The following masks are mutually exclusive:
  *     ORP_MASK_DATA_TYPE
@@ -168,6 +158,7 @@
  *     ORP_MASK_VERSION
  *     ORP_MASK_EVENT
  */
+#define ORP_MASK_NONE             0x0000 /* no mandatory fields for incoming */
 #define ORP_MASK_PACK_TYPE        0x0001
 #define ORP_MASK_DATA_TYPE        0x0002
 #define ORP_MASK_SEG_NUM          0x0004
@@ -260,9 +251,9 @@ orp_PacketTypeTable[] =
     { ORP_PKT_NTFY_SENSOR_CALL,    ORP_NTFY_SENSOR_CALL,    ORP_MASK_PATH                      },
     { ORP_PKT_RESP_SENSOR_CALL,    ORP_RESP_SENSOR_CALL,    ORP_MASK_STATUS                    },
 
-    { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,     /* no mandatory fields for incomming */   },
-    { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,  /* no mandatory fields for incomming */   },
-    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,     /* no mandatory fields for incomming */   },
+    { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,            ORP_MASK_VERSION                   },
+    { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,         ORP_MASK_VERSION                   },
+    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,            ORP_MASK_NONE                      },
 
     { ORP_PKT_RQST_FILE_DATA,      ORP_RQST_FILE_DATA,      ORP_MASK_DATA                      },
     { ORP_PKT_RESP_FILE_DATA,      ORP_RESP_FILE_DATA,      ORP_MASK_STATUS                    },
@@ -270,7 +261,7 @@ orp_PacketTypeTable[] =
     { ORP_PKT_NTFY_FILE_CONTROL,   ORP_NTFY_FILE_CONTROL,   ORP_MASK_EVENT                     },
     { ORP_PKT_RESP_FILE_CONTROL,   ORP_RESP_FILE_CONTROL,   ORP_MASK_STATUS                    },
 
-    { ORP_PKT_RESP_UNKNOWN_RQST,   ORP_RESP_UNKNOWN_RQST,   0                                  },
+    { ORP_PKT_RESP_UNKNOWN_RQST,   ORP_RESP_UNKNOWN_RQST,   ORP_MASK_NONE                      },
 
 };
 
@@ -338,6 +329,10 @@ void orp_MessageInit
     msg->type = type;
     msg->status = status;
     msg->timestamp = ORP_TIMESTAMP_INVALID;
+    // These are ignored by the encoder if < 0
+    msg->sentCount = -1;
+    msg->receivedCount = -1;
+    msg->mtu = -1;
 }
 
 
@@ -384,6 +379,7 @@ static bool orp_PacketTypeDecode
             return true;
         }
     }
+    LE_ERROR("Failed to decode data type: 0x%02X", buf[ORP_OFFSET_DATA_TYPE]);
     return false;
 }
 
@@ -434,6 +430,7 @@ static bool orp_DataTypeDecode
             return true;
         }
     }
+    LE_ERROR("Failed to decode data type: 0x%02X", buf[ORP_OFFSET_DATA_TYPE]);
     return false;
 }
 
@@ -476,16 +473,8 @@ static size_t orp_TimeEncode
 )
 //--------------------------------------------------------------------------------------------------
 {
-/* NOTE: There is an error in the ORP service which causes it to reject timestamps containing a
- * decimal point.  This will be corrected in Octave firmware release 3.2.0.
- */
-#if 0
-#define TIME_FMT "%lu"
-    unsigned long sec = time;
-#else
 #define TIME_FMT "%lf"
     double sec = time;
-#endif
     return (time == ORP_TIMESTAMP_INVALID) ? 0 : snprintf((char *)buf, bufLen, "%c" TIME_FMT, ORP_FIELD_ID_TIME, sec);
 }
 
@@ -504,12 +493,9 @@ static bool orp_TimeDecode
 )
 //--------------------------------------------------------------------------------------------------
 {
-    bool result = false;
-    bool inDecimal = false;
-
-
     if (!timeStr)
     {
+        LE_ERROR("Null time string");
         return false;
     }
 
@@ -517,41 +503,58 @@ static bool orp_TimeDecode
     if (0 == len || len > ORP_PROTOCOL_TIMESTAMP_LEN_MAX)
     {
         LE_ERROR("Invalid length time string: %d", len);
+        return false;
     }
-    else
+
+    int decimalIndex = -1;
+    for (unsigned int i = 0; i < strlen(timeStr); i++)
     {
-        result = true;
-        for (unsigned int i = 0; i < strlen(timeStr); i++)
+        if (!isdigit(timeStr[i]))
         {
-            if (!isdigit(timeStr[i]))
+            // One decimal point is fine, any more is obviously wrong
+            if (('.' == timeStr[i]) && (decimalIndex < 0))
             {
-                // One decimal point is fine, any more is obviously wrong
-                if (('.' == timeStr[i]) && (false == inDecimal))
-                {
-                    inDecimal = true;
-                }
-                else
-                {
-                    LE_ERROR("Invalid character in time string: %c", timeStr[i]);
-                    result = false;
-                    break;
-                }
+                decimalIndex = i;
             }
-        }
-        if (result)
-        {
-            char *endPtr;
-            errno = 0;
-            *timeVal = strtod(timeStr, &endPtr);
-            if (endPtr == timeStr)
+            else
             {
-                LE_ERROR("Failed to decode time string: %s", timeStr);
-                result = false;
+                LE_ERROR("Invalid character in time string: %c", timeStr[i]);
+                return false;
             }
         }
     }
 
-    return result;
+    if (decimalIndex < 0)
+    {
+        // There are no digits to the right of the decimal
+        decimalIndex = strlen(timeStr);
+    }
+    else
+    {
+        // Check the number of decimal digits - ie. to the right of the decimal point
+        if ((strlen(timeStr) - decimalIndex - 1) > ORP_PROTOCOL_TIMESTAMP_DECIMAL_LEN_MAX)
+        {
+            LE_ERROR("Time resolution exceeds 10^-%d", ORP_PROTOCOL_TIMESTAMP_DECIMAL_LEN_MAX);
+            return false;
+        }
+    }
+    // Check the number of integral digits - ie. to the left of the decimal point
+    if (decimalIndex > ORP_PROTOCOL_TIMESTAMP_INTEGER_LEN_MAX)
+    {
+        LE_ERROR("Time magnitude exceedes 10^%d - 1", ORP_PROTOCOL_TIMESTAMP_INTEGER_LEN_MAX);
+        return false;
+    }
+
+    char *endPtr;
+    errno = 0;
+    *timeVal = strtod(timeStr, &endPtr);
+    if (endPtr == timeStr)
+    {
+        LE_ERROR("Failed to decode time string: %s", timeStr);
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -696,7 +699,7 @@ static bool orp_EnumDecode
 (
     uint8_t *buf,
     unsigned int offset,
-    int *version
+    int *value
 )
 //--------------------------------------------------------------------------------------------------
 {
@@ -704,14 +707,15 @@ static bool orp_EnumDecode
 
     if ('0' <= c || c <= '9')
     {
-        *version = c - '0';
+        *value = c - '0';
     }
     else if ('A' <= c || c <= 'Z')
     {
-        *version = c - 'A' + 10;
+        *value = c - 'A' + 10;
     }
     else
     {
+        LE_ERROR("Failed to decode alphanumeric: 0x%02X", buf[offset]);
         return false;
     }
     return true;
@@ -789,7 +793,7 @@ static bool orp_PacketByte1Decode
 )
 //--------------------------------------------------------------------------------------------------
 {
-    bool status = true;
+    bool status = false;
 
     do
     {
@@ -839,7 +843,7 @@ static ssize_t orp_MtuEncode
 {
     ssize_t len = snprintf((char *)buf, bufLen, "%c%d", ORP_FIELD_ID_MTU, mtu);
 
-    if (bufLen <= len)
+    if (bufLen <= (size_t)len)
     {
         LE_ERROR("Insufficient buffer size for mtu: %zu", bufLen);
         len = -1;
@@ -897,6 +901,7 @@ static bool orp_ProtocolDecode_v1
 {
     enum { SEARCH, INFIELD, DONE, ERROR } state = ERROR;
     const char *timeStr = NULL;
+    unsigned int offset = 0;
 
 
     LE_ASSERT(pktBuf && msg);
@@ -915,10 +920,12 @@ static bool orp_ProtocolDecode_v1
         if (!orp_PacketTypeDecode(pktBuf, &msg->type))
         {
             LE_ERROR("Failed to decode packet type: %d", msg->type);
+            offset = ORP_OFFSET_PACKET_TYPE;
             break;
         }
         if (!orp_PacketByte1Decode(pktBuf, msg))
         {
+            offset = ORP_OFFSET_DATA_TYPE;
             break;
         }
         msg->sequenceNum = (pktBuf[ORP_OFFSET_SEQ_NUM] << 8) & 0xFF00;
@@ -928,13 +935,13 @@ static bool orp_ProtocolDecode_v1
          * Variable length fields must begin with an identifier byte
          */
         state = SEARCH;
-        for (unsigned int i = ORP_OFFSET_VARLENGTH;
-             i < pktLen && state != DONE && state != ERROR; i++)
+        for (offset = ORP_OFFSET_VARLENGTH;
+             offset < pktLen && state != DONE && state != ERROR; offset++)
         {
             // If separator found, null-terminate current field and scan for next
-            if (ORP_VARLENGTH_SEPARATOR == pktBuf[i])
+            if (ORP_VARLENGTH_SEPARATOR == pktBuf[offset])
             {
-                pktBuf[i] = '\0';
+                pktBuf[offset] = '\0';
                 state = SEARCH;
                 continue;
             }
@@ -943,26 +950,27 @@ static bool orp_ProtocolDecode_v1
             {
                 char *endPtr;
 
-                switch (pktBuf[i])
+//#error "Use a table and for loop to search field IDs"
+                switch (pktBuf[offset])
                 {
                     case ORP_FIELD_ID_PATH:
-                        msg->path = (const char *)&pktBuf[i + 1];
+                        msg->path = (const char *)&pktBuf[offset + 1];
                         state = INFIELD;
                         break;
 
                     case ORP_FIELD_ID_TIME:
-                        timeStr = (const char *)&pktBuf[i + 1];
+                        timeStr = (const char *)&pktBuf[offset + 1];
                         state = INFIELD;
                         break;
 
                     case ORP_FIELD_ID_UNITS:
-                        msg->unit = (const char *)&pktBuf[i + 1];
+                        msg->unit = (const char *)&pktBuf[offset + 1];
                         state = INFIELD;
                         break;
 
                     case ORP_FIELD_ID_DATA:
-                        msg->data = &pktBuf[i + 1];
-                        msg->dataLen = pktLen - i - 1;
+                        msg->data = &pktBuf[offset + 1];
+                        msg->dataLen = pktLen - offset - 1;
                         pktBuf[pktLen] = '\0';
                         // Data must be last field - Stop scanning immediately
                         state = DONE;
@@ -971,7 +979,7 @@ static bool orp_ProtocolDecode_v1
                     case ORP_FIELD_ID_MTU:
                         state = INFIELD;
                         errno = 0;
-                        msg->mtu = strtoul((const char *)&pktBuf[i + 1], &endPtr, 0);
+                        msg->mtu = strtoul((const char *)&pktBuf[offset + 1], &endPtr, 0);
                         if (0 != errno)
                         {
                             LE_ERROR("Failed to decode max transfer size");
@@ -982,7 +990,7 @@ static bool orp_ProtocolDecode_v1
                     case ORP_FIELD_ID_RECV_COUNT:
                         state = INFIELD;
                         errno = 0;
-                        msg->receivedCount = strtoul((const char *)&pktBuf[i + 1], &endPtr, 0);
+                        msg->receivedCount = strtoul((const char *)&pktBuf[offset + 1], &endPtr, 0);
                         if (0 != errno)
                         {
                             LE_ERROR("Failed to decode received count");
@@ -993,7 +1001,7 @@ static bool orp_ProtocolDecode_v1
                     case ORP_FIELD_ID_SENT_COUNT:
                         state = INFIELD;
                         errno = 0;
-                        msg->sentCount = strtoul((const char *)&pktBuf[i + 1], &endPtr, 0);
+                        msg->sentCount = strtoul((const char *)&pktBuf[offset + 1], &endPtr, 0);
                         if (0 != errno)
                         {
                             LE_ERROR("Failed to decode sent count");
@@ -1002,7 +1010,7 @@ static bool orp_ProtocolDecode_v1
                         break;
 
                     default:
-                        LE_ERROR("Unknown field identifier pktBuf[%d] = %02X", i, pktBuf[i]);
+                        LE_ERROR("Unknown field identifier pktBuf[%d] = %02X", offset, pktBuf[offset]);
                         state = ERROR;
                         break;
                 }
@@ -1018,28 +1026,36 @@ static bool orp_ProtocolDecode_v1
         /* Convert the string timestamp to double, if present.  Done here to ensure string is
          * null terminated
          */
-        if (timeStr && strlen(timeStr))
+        if (timeStr)
         {
-            orp_TimeDecode(&msg->timestamp, timeStr);
-        }
-
-        if (ERROR == state)
-        {
-            LE_ERROR("Failed to decode: %d %d %04X %s",
-                     msg->type, msg->dataType, msg->sequenceNum,
-                     pktBuf + ORP_OFFSET_VARLENGTH);
-        }
-        else
-        {
-            LE_DEBUG("Decoded: %u %d %04X path: %s time: %lf unit: %s dataLen: %zu",
-                     msg->type, msg->dataType, msg->sequenceNum,
-                     msg->path ? msg->path : "",
-                     msg->timestamp,
-                     msg->unit ? msg->unit : "",
-                     msg->dataLen);
+            if (!orp_TimeDecode(&msg->timestamp, timeStr))
+            {
+                // The offset has since been incremented.  Recalculate for time field
+                offset = (unsigned int)((uint8_t *)timeStr - pktBuf) - 1;
+                state = ERROR;
+            }
         }
 
     } while (0);
+
+    if (ERROR == state)
+    {
+        LE_ERROR("Failed to decode: %d %d %04X %s",
+                    msg->type, msg->dataType, msg->sequenceNum,
+                    pktBuf + ORP_OFFSET_VARLENGTH);
+
+        LE_ERROR("Error near byte %d %s", offset,
+                offset >= ORP_OFFSET_VARLENGTH ? (char *)&pktBuf[offset] : "");
+    }
+    else
+    {
+        LE_DEBUG("Decoded: %u %d %04X path: %s time: %lf unit: %s dataLen: %zu",
+                    msg->type, msg->dataType, msg->sequenceNum,
+                    msg->path ? msg->path : "",
+                    msg->timestamp,
+                    msg->unit ? msg->unit : "",
+                    msg->dataLen);
+    }
 
     return ERROR == state ? false : true;
 }
@@ -1090,8 +1106,8 @@ static bool orp_ProtocolEncode_v1
         /* Encode variable length fields, starting at ORP_OFFSET_VARLENGTH.
          * Insert separators only as needed
          */
-        size_t index = ORP_OFFSET_VARLENGTH;
-        size_t fieldLen = 0;
+        ssize_t index = ORP_OFFSET_VARLENGTH;
+        ssize_t fieldLen = 0;
 
         fieldLen = orp_TimeEncode(packet + index, len - index, msg->timestamp);
         index += fieldLen;
