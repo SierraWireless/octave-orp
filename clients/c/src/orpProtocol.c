@@ -113,7 +113,7 @@
 // Version 2
 #define  ORP_PKT_SYNC_SYN            'Y'   // type[1] version[1] sequence[2] time[] sent[] received[] mtu[]
 #define  ORP_PKT_SYNC_SYNACK         'y'   // type[1] version[1] sequence[2] sent[] received[] mtu[]
-#define  ORP_PKT_SYNC_ACK            'z'   // type[1] unused[1]  sequence[2]
+#define  ORP_PKT_SYNC_ACK            'z'   // type[1] version[1] unused[2]
 
 #define  ORP_PKT_RQST_FILE_DATA      'T'   // type[1] unused[1]  sequence[2] data[]
 #define  ORP_PKT_RESP_FILE_DATA      't'   // type[1] status[1]  sequence[2]
@@ -253,7 +253,7 @@ orp_PacketTypeTable[] =
 
     { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,            ORP_MASK_VERSION                   },
     { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,         ORP_MASK_VERSION                   },
-    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,            ORP_MASK_NONE                      },
+    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,            ORP_MASK_VERSION                   },
 
     { ORP_PKT_RQST_FILE_DATA,      ORP_RQST_FILE_DATA,      ORP_MASK_DATA                      },
     { ORP_PKT_RESP_FILE_DATA,      ORP_RESP_FILE_DATA,      ORP_MASK_STATUS                    },
