@@ -171,6 +171,7 @@
 #define ORP_MASK_STATUS           0x0200
 #define ORP_MASK_VERSION          0x0400
 #define ORP_MASK_EVENT            0x0800
+#define ORP_MASK_BYTE1_UNUSED     0x1000
 
 
 // Status codes:  Use @-Z (0x40-0x5A) and subtract 0x40
@@ -215,53 +216,55 @@ static struct
 }
 orp_PacketTypeTable[] =
 {
-    { ORP_PKT_RQST_INPUT_CREATE,   ORP_RQST_INPUT_CREATE,   ORP_MASK_DATA_TYPE | ORP_MASK_PATH },
-    { ORP_PKT_RESP_INPUT_CREATE,   ORP_RESP_INPUT_CREATE,   ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_INPUT_CREATE,   ORP_RQST_INPUT_CREATE,   ORP_MASK_DATA_TYPE | ORP_MASK_PATH      },
+    { ORP_PKT_RESP_INPUT_CREATE,   ORP_RESP_INPUT_CREATE,   ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_OUTPUT_CREATE,  ORP_RQST_OUTPUT_CREATE,  ORP_MASK_DATA_TYPE | ORP_MASK_PATH },
-    { ORP_PKT_RESP_OUTPUT_CREATE,  ORP_RESP_OUTPUT_CREATE,  ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_OUTPUT_CREATE,  ORP_RQST_OUTPUT_CREATE,  ORP_MASK_DATA_TYPE | ORP_MASK_PATH      },
+    { ORP_PKT_RESP_OUTPUT_CREATE,  ORP_RESP_OUTPUT_CREATE,  ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_DELETE,         ORP_RQST_DELETE,         ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_DELETE,         ORP_RESP_DELETE,         ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_DELETE,         ORP_RQST_DELETE,         ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_DELETE,         ORP_RESP_DELETE,         ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_HANDLER_ADD,    ORP_RQST_HANDLER_ADD,    ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_HANDLER_ADD,    ORP_RESP_HANDLER_ADD,    ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_HANDLER_ADD,    ORP_RQST_HANDLER_ADD,    ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_HANDLER_ADD,    ORP_RESP_HANDLER_ADD,    ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_HANDLER_REMOVE, ORP_RQST_HANDLER_REM,    ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_HANDLER_REMOVE, ORP_RESP_HANDLER_REM,    ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_HANDLER_REMOVE, ORP_RQST_HANDLER_REM,    ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_HANDLER_REMOVE, ORP_RESP_HANDLER_REM,    ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_PUSH,           ORP_RQST_PUSH,           ORP_MASK_DATA_TYPE | ORP_MASK_PATH },
-    { ORP_PKT_RESP_PUSH,           ORP_RESP_PUSH,           ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_PUSH,           ORP_RQST_PUSH,           ORP_MASK_DATA_TYPE | ORP_MASK_PATH      },
+    { ORP_PKT_RESP_PUSH,           ORP_RESP_PUSH,           ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_GET,            ORP_RQST_GET,            ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_GET,            ORP_RESP_GET,            ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_GET,            ORP_RQST_GET,            ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_GET,            ORP_RESP_GET,            ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_EXAMPLE_SET,    ORP_RQST_EXAMPLE_SET,    ORP_MASK_DATA_TYPE | ORP_MASK_PATH },
-    { ORP_PKT_RESP_EXAMPLE_SET,    ORP_RESP_EXAMPLE_SET,    ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_EXAMPLE_SET,    ORP_RQST_EXAMPLE_SET,    ORP_MASK_DATA_TYPE | ORP_MASK_PATH      },
+    { ORP_PKT_RESP_EXAMPLE_SET,    ORP_RESP_EXAMPLE_SET,    ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_SENSOR_CREATE,  ORP_RQST_SENSOR_CREATE,  ORP_MASK_DATA_TYPE | ORP_MASK_PATH },
-    { ORP_PKT_RESP_SENSOR_CREATE,  ORP_RESP_SENSOR_CREATE,  ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_SENSOR_CREATE,  ORP_RQST_SENSOR_CREATE,  ORP_MASK_DATA_TYPE | ORP_MASK_PATH      },
+    { ORP_PKT_RESP_SENSOR_CREATE,  ORP_RESP_SENSOR_CREATE,  ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RQST_SENSOR_REMOVE,  ORP_RQST_SENSOR_REMOVE,  ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_SENSOR_REMOVE,  ORP_RESP_SENSOR_REMOVE,  ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_SENSOR_REMOVE,  ORP_RQST_SENSOR_REMOVE,  ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_SENSOR_REMOVE,  ORP_RESP_SENSOR_REMOVE,  ORP_MASK_STATUS                         },
 
-    { ORP_PKT_NTFY_HANDLER_CALL,   ORP_NTFY_HANDLER_CALL,   ORP_MASK_TIME | ORP_MASK_PATH      },
-    { ORP_PKT_RESP_HANDLER_CALL,   ORP_RESP_HANDLER_CALL,   ORP_MASK_STATUS                    },
+    { ORP_PKT_NTFY_HANDLER_CALL,   ORP_NTFY_HANDLER_CALL,   ORP_MASK_BYTE1_UNUSED   |
+                                                            ORP_MASK_TIME           |
+                                                            ORP_MASK_PATH                           },
+    { ORP_PKT_RESP_HANDLER_CALL,   ORP_RESP_HANDLER_CALL,   ORP_MASK_STATUS                         },
 
-    { ORP_PKT_NTFY_SENSOR_CALL,    ORP_NTFY_SENSOR_CALL,    ORP_MASK_PATH                      },
-    { ORP_PKT_RESP_SENSOR_CALL,    ORP_RESP_SENSOR_CALL,    ORP_MASK_STATUS                    },
+    { ORP_PKT_NTFY_SENSOR_CALL,    ORP_NTFY_SENSOR_CALL,    ORP_MASK_BYTE1_UNUSED | ORP_MASK_PATH   },
+    { ORP_PKT_RESP_SENSOR_CALL,    ORP_RESP_SENSOR_CALL,    ORP_MASK_STATUS                         },
 
-    { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,            ORP_MASK_VERSION                   },
-    { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,         ORP_MASK_VERSION                   },
-    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,            ORP_MASK_VERSION                   },
+    { ORP_PKT_SYNC_SYN,            ORP_SYNC_SYN,            ORP_MASK_VERSION                        },
+    { ORP_PKT_SYNC_SYNACK,         ORP_SYNC_SYNACK,         ORP_MASK_VERSION                        },
+    { ORP_PKT_SYNC_ACK,            ORP_SYNC_ACK,            ORP_MASK_VERSION                        },
 
-    { ORP_PKT_RQST_FILE_DATA,      ORP_RQST_FILE_DATA,      ORP_MASK_DATA                      },
-    { ORP_PKT_RESP_FILE_DATA,      ORP_RESP_FILE_DATA,      ORP_MASK_STATUS                    },
+    { ORP_PKT_RQST_FILE_DATA,      ORP_RQST_FILE_DATA,      ORP_MASK_BYTE1_UNUSED | ORP_MASK_DATA   },
+    { ORP_PKT_RESP_FILE_DATA,      ORP_RESP_FILE_DATA,      ORP_MASK_STATUS                         },
 
-    { ORP_PKT_NTFY_FILE_CONTROL,   ORP_NTFY_FILE_CONTROL,   ORP_MASK_EVENT                     },
-    { ORP_PKT_RESP_FILE_CONTROL,   ORP_RESP_FILE_CONTROL,   ORP_MASK_STATUS                    },
+    { ORP_PKT_NTFY_FILE_CONTROL,   ORP_NTFY_FILE_CONTROL,   ORP_MASK_EVENT                          },
+    { ORP_PKT_RESP_FILE_CONTROL,   ORP_RESP_FILE_CONTROL,   ORP_MASK_STATUS                         },
 
-    { ORP_PKT_RESP_UNKNOWN_RQST,   ORP_RESP_UNKNOWN_RQST,   ORP_MASK_NONE                      },
+    { ORP_PKT_RESP_UNKNOWN_RQST,   ORP_RESP_UNKNOWN_RQST,   ORP_MASK_NONE                           },
 
 };
 
@@ -794,9 +797,15 @@ static bool orp_PacketByte1Decode
 //--------------------------------------------------------------------------------------------------
 {
     bool status = false;
-
     do
     {
+        // Check if the byte1 is unused
+        if (orp_FieldRequired(msg->type, ORP_MASK_BYTE1_UNUSED))
+        {
+            // Byte 1 is unused
+            return true;
+        }
+
         if (orp_FieldRequired(msg->type, ORP_MASK_STATUS))
         {
             status = orp_StatusDecode(buf, &msg->status);
