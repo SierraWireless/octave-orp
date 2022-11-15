@@ -90,9 +90,6 @@ static int fd = -1;
 // HDLC context
 static hdlc_context_t rxHdlcContext;
 
-// Count of the number of frames transmitted so far.  This will roll-over
-static uint16_t sequenceNum = 0;
-
 //--------------------------------------------------------------------------------------------------
 /**
  * Initialize local variables and state
@@ -115,7 +112,7 @@ bool orp_ClientInit
     }
     printf("Protocol codec initialized\n");
     fd = fileDescriptor;
-    sequenceNum = 0;
+
     if (mode == MODE_HDLC)
     {
         hdlc_Init(&rxHdlcContext);
@@ -280,17 +277,6 @@ static le_result_t orp_ClientMessageSend
     size_t   packetBufferLen = sizeof(txPacketBuf);
     uint8_t *frameBuffer = txFrameBuf;
     size_t   frameBufferSize = sizeof(txFrameBuf);
-    bool     syncMessage = false;
-
-    // Set sequence number if this is anything other than a sync packet
-    if (ORP_SYNC_SYN == message->type || ORP_SYNC_SYNACK == message->type || ORP_SYNC_ACK == message->type)
-    {
-        syncMessage = true;
-    }
-    else
-    {
-        message->sequenceNum = sequenceNum;
-    }
 
     // Encode the packet
     if (!orp_Encode(packetBuffer, &packetBufferLen, message))
@@ -333,10 +319,6 @@ static le_result_t orp_ClientMessageSend
         goto err;
     }
 
-    if (!syncMessage)
-    {
-        sequenceNum++;
-    }
     return LE_OK;
 
 err:

@@ -270,6 +270,7 @@ orp_PacketTypeTable[] =
 
 #define ORP_PACKET_TYPE_TABLE_SIZE (sizeof(orp_PacketTypeTable) / sizeof(orp_PacketTypeTable[0]))
 
+static uint16_t last_received_seq_number = 0;
 
 //--------------------------------------------------------------------------------------------------
 /**
@@ -937,8 +938,10 @@ static bool orp_ProtocolDecode_v1
             offset = ORP_OFFSET_DATA_TYPE;
             break;
         }
-        msg->sequenceNum = (pktBuf[ORP_OFFSET_SEQ_NUM] << 8) & 0xFF00;
-        msg->sequenceNum += pktBuf[ORP_OFFSET_SEQ_NUM + 1] & 0x00FF;
+
+        last_received_seq_number = (pktBuf[ORP_OFFSET_SEQ_NUM] << 8) & 0xFF00;
+        last_received_seq_number += pktBuf[ORP_OFFSET_SEQ_NUM + 1] & 0x00FF;
+        msg->sequenceNum = last_received_seq_number;
 
         /* Locate and parse variable length fields
          * Variable length fields must begin with an identifier byte
@@ -1109,8 +1112,17 @@ static bool orp_ProtocolEncode_v1
         {
             break;
         }
-        packet[ORP_OFFSET_SEQ_NUM]     = (msg->sequenceNum & 0x00FF);
-        packet[ORP_OFFSET_SEQ_NUM + 1] = (msg->sequenceNum & 0xFF00) >> 8;
+
+        // Copy Sequence Number from Request or increment it in case of request sent by the device
+        if ((packet[ORP_OFFSET_PACKET_TYPE] != ORP_PKT_SYNC_SYN) && isupper(packet[ORP_OFFSET_PACKET_TYPE]))
+        {
+            // The device will send a request -> increment the Sequence Number
+            last_received_seq_number += 1;
+        }
+
+        packet[ORP_OFFSET_SEQ_NUM]     = (last_received_seq_number & 0xFF00) >> 8;
+        packet[ORP_OFFSET_SEQ_NUM + 1] = (last_received_seq_number & 0x00FF);
+        msg->sequenceNum = last_received_seq_number;
 
         /* Encode variable length fields, starting at ORP_OFFSET_VARLENGTH.
          * Insert separators only as needed
